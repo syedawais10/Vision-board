@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Interactive Vision Board</title>
+<link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg-1:#eef5ff;
+    --bg-2:#f8fafc;
+    --ink:#0f172a;
+    --ink-soft:#334155;
+    --brand:#2563eb;
+    --accent:#10b981;
+    --warn:#f59e0b;
+    --card:#ffffffcc;
+    --shadow: 0 10px 30px rgba(2,6,23,.12), 0 2px 8px rgba(2,6,23,.06);
+  }
+  *{box-sizing:border-box}
+  html,body{height:100%}
+  body{
+    margin:0;
+    font-family:Montserrat,system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif;
+    color:var(--ink);
+    background: radial-gradient(1000px 600px at 20% 0%, var(--bg-1), #fff 55%) no-repeat,
+                linear-gradient(180deg, var(--bg-2), #fff);
+  }
+  .page{
+    max-width:1280px;
+    margin:32px auto;
+    padding:0 16px 24px;
+  }
+  header{
+    display:flex; gap:12px; align-items:center; justify-content:space-between;
+    margin-bottom:12px;
+  }
+  .toolbar{display:flex; gap:10px; align-items:center;}
+  .btn{
+    appearance:none; border:0; padding:10px 14px; border-radius:12px;
+    font-weight:700; cursor:pointer; background:#fff; color:var(--ink);
+    box-shadow: var(--shadow); transition:transform .15s ease, box-shadow .2s ease;
+  }
+  .btn:hover{transform:translateY(-1px)}
+  .btn.primary{background:var(--brand); color:#fff}
+  .btn.ghost{background:transparent; box-shadow:none; border:2px solid #e5e7eb}
+  .hint{color:var(--ink-soft); font-size:.9rem}
+
+  /* Board */
+  .board{
+    position:relative;
+    width:100%;
+    aspect-ratio:16/9;
+    border-radius:18px;
+    overflow:hidden;
+    background:#cbd5e1 url("vision-board.jpg") center/cover no-repeat;
+    box-shadow: var(--shadow);
+    outline:1px solid #e5e7eb;
+  }
+  .overlay{
+    position:absolute; inset:0;
+  }
+
+  /* Hotspots */
+  .hotspot{
+    position:absolute;
+    left:var(--x); top:var(--y);
+    transform:translate(-50%,-50%);
+    border:0; background:#fff; color:var(--ink);
+    width:46px; height:46px; border-radius:50%;
+    display:grid; place-items:center;
+    font-size:22px; cursor:pointer; box-shadow: var(--shadow);
+    transition: transform .15s ease, box-shadow .2s ease, filter .15s ease;
+  }
+  .hotspot:hover{ transform:translate(-50%,-50%) scale(1.08); filter:saturate(1.2) }
+  .hotspot[data-color="green"]{ background:#ecfdf5; color:#065f46 }
+  .hotspot[data-color="blue"]{ background:#eff6ff; color:#1e40af }
+  .hotspot[data-color="amber"]{ background:#fffbeb; color:#92400e }
+  .hotspot[data-color="rose"]{ background:#fef2f2; color:#9f1239 }
+  .hotspot.editing{ outline:2px dashed #94a3b8 }
+
+  /* Click pop animation */
+  @keyframes pop {
+    0%{ transform:translate(-50%,-50%) scale(1); }
+    55%{ transform:translate(-50%,-50%) scale(1.16); }
+    100%{ transform:translate(-50%,-50%) scale(1); }
+  }
+  .hotspot.pop { animation: pop .22s ease-out; }
+
+  /* Tooltip */
+  .tooltip{
+    position:absolute; pointer-events:none; z-index:40; opacity:0;
+    transform: translate(-50%,-12px) scale(.98);
+    transition: opacity .12s ease, transform .12s ease;
+  }
+  .tooltip.show{ opacity:1; transform: translate(-50%,-12px) scale(1); }
+  .tip-card{
+    background:var(--card); backdrop-filter:saturate(1.1) blur(6px);
+    color:var(--ink); padding:8px 12px; border-radius:12px;
+    box-shadow: var(--shadow); font-size:.9rem; white-space:nowrap;
+  }
+
+  /* Modal */
+  .modal{ position:fixed; inset:0; display:none; place-items:center; z-index:50; }
+  .modal.show{ display:grid; }
+  .backdrop{ position:absolute; inset:0; background:rgba(2,6,23,.5); }
+  .sheet{
+    position:relative; width:min(780px,92vw); max-height:84vh; overflow:auto;
+    background:#fff; border-radius:18px; box-shadow: var(--shadow);
+    padding:20px 22px;
+  }
+  .sheet header{ margin:0 0 10px 0; }
+  .sheet h2{ margin:0; font-size:1.35rem; }
+  .pill{
+    display:inline-flex; align-items:center; gap:8px;
+    background:#f1f5f9; color:#0f172a; border-radius:999px; padding:6px 10px; font-size:.9rem;
+  }
+  .grid{ display:grid; grid-template-columns:1fr; gap:14px; }
+  @media (min-width:720px){ .grid{ grid-template-columns: 1fr 1fr; } }
+  .card{
+    background:#fafafa; border-radius:12px; padding:14px; border:1px solid #e5e7eb;
+  }
+  .card h3{ margin:0 0 8px 0; font-size:1rem; color:#0f172a }
+  ul{ margin:0; padding-left:18px }
+  .links{ display:flex; flex-wrap:wrap; gap:8px; margin-top:10px }
+  .link{ text-decoration:none; background:#eef2ff; color:#3730a3; padding:8px 10px; border-radius:10px; font-weight:700 }
+  .close{
+    position:absolute; right:12px; top:12px;
+    background:#0f172a; color:#fff; border:0; width:34px; height:34px;
+    border-radius:10px; cursor:pointer;
+  }
+  .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, monospace; background:#f1f5f9; padding:2px 6px; border-radius:6px; border:1px solid #e2e8f0; font-size:.85rem}
+  footer{margin-top:10px; color:var(--ink-soft); font-size:.9rem}
+</style>
+</head>
+<body>
+  <div class="page">
+    <header>
+      <div class="toolbar">
+        <button id="toggleEdit" class="btn">Edit layout</button>
+        <button id="saveBtn" class="btn">Save</button>
+        <button id="resetBtn" class="btn ghost">Reset</button>
+      </div>
+      <div class="hint">Tip: while in Edit layout, drag the dots. Press <span class="kbd">E</span> to toggle.</div>
+    </header>
+
+    <div class="board" id="board">
+      <div class="overlay" id="overlay"></div>
+      <!-- floating tooltip -->
+      <div class="tooltip" id="tooltip"><div class="tip-card" id="tipText"></div></div>
+    </div>
+
+    <footer>Replace <strong>vision-board.jpg</strong> with your wallpaper image in the same folder. Positions are stored in your browser only.</footer>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal" id="modal">
+    <div class="backdrop" id="backdrop"></div>
+    <div class="sheet" role="dialog" aria-modal="true">
+      <button class="close" id="closeModal" aria-label="Close">✕</button>
+      <header style="display:flex;align-items:center;gap:10px;">
+        <span id="modalEmoji" class="pill">🏁</span>
+        <h2 id="modalTitle">Title</h2>
+      </header>
+
+      <div class="grid">
+        <div class="card">
+          <h3>Details</h3>
+          <div id="modalDetails"></div>
+        </div>
+        <div class="card">
+          <h3>Checklist</h3>
+          <ul id="modalList"></ul>
+          <div class="links" id="modalLinks"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+<script>
+const DEFAULT_HOTSPOTS = [
+  {
+    id:"umrah", label:"Hajj / Umrah", emoji:"🕋", color:"blue",
+    x:50, y:14, // Centered over Kaaba
+    details:"Spiritual priority. Prepare documents, health, and savings plan.",
+    list:["Target Umrah 2026, Hajj 2028","Passport validity, Ihram kit, duas list","Savings jar and travel plan"],
+    links:[]
+  },
+  {
+    id:"house", label:"Dream Home", emoji:"🏡", color:"green",
+    x:14, y:23, // Left house image
+    details:"Neighborhood research, financing options, and layout references.",
+    list:["Shortlist areas","Down payment target","Architect moodboard"],
+    links:[]
+  },
+  {
+    id:"fitness", label:"Fitness", emoji:"💪", color:"green",
+    x:17, y:39, // Dumbbells & bottle
+    details:"Workout consistency and hydration routine.",
+    list:["3x strength days","Track water intake","Stretch routine"],
+    links:[]
+  },
+  {
+    id:"exercise", label:"Consistency", emoji:"🏃", color:"amber",
+    x:20, y:63, // Treadmill runner
+    details:"Daily cardio to stay active.",
+    list:["30-min treadmill daily","Weekly progress chart","Reward streaks"],
+    links:[]
+  },
+  {
+    id:"short", label:"Short-Term Goals", emoji:"📝", color:"blue",
+    x:37, y:75,
+    details:"Wins within 3–12 months.",
+    list:["Start SaaS MVP","Exercise 30 mins daily","SDR team weekly targets","Emergency fund (6 months)","New laptop","Book Umrah 2026"],
+    links:[]
+  },
+  {
+    id:"charity", label:"Charity", emoji:"🤲", color:"green",
+    x:46, y:80,
+    details:"Regular sadaqah and zakat contributions.",
+    list:["Monthly sadaqah","Ramadan zakat plan"],
+    links:[]
+  },
+  {
+    id:"long", label:"Long-Term Goals", emoji:"📌", color:"amber",
+    x:66, y:75,
+    details:"3+ year outcomes that guide direction.",
+    list:["Hajj 2028","Dream home","Agency expansion","Financial independence","Investments: stocks, gold, real estate","World travel"],
+    links:[]
+  },
+  {
+    id:"invest", label:"Invest", emoji:"📈", color:"blue",
+    x:72, y:27, // Stock chart area
+    details:"Consistent DCA into diversified portfolio.",
+    list:["Monthly DCA","Equity + gold mix","Annual rebalancing"],
+    links:[]
+  },
+  {
+    id:"travel", label:"Travel", emoji:"🌍✈️", color:"rose",
+    x:88, y:17, // Globe top right
+    details:"Two meaningful trips a year. Culture first, photos second.",
+    list:["Renew ID/visa","Flight deal alerts","Itinerary doc"],
+    links:[]
+  },
+  {
+    id:"car", label:"Dream Car", emoji:"🚗", color:"amber",
+    x:82, y:37, // Red car
+    details:"Research, test drives, financing options.",
+    list:["Shortlist models","Ownership cost plan"],
+    links:[]
+  },
+  {
+    id:"saving", label:"Saving", emoji:"💰", color:"green",
+    x:85, y:72, // Wallet / money pocket
+    details:"Automate transfers. Pay yourself first.",
+    list:["Payday auto-save","Jar system","Monthly review"],
+    links:[]
+  },
+  {
+    id:"waste", label:"Cut Waste", emoji:"📵", color:"rose",
+    x:85, y:61, // iPhone image
+    details:"Avoid unnecessary gadget spends.",
+    list:["No impulsive buys","Sell unused items"],
+    links:[]
+  }
+];
+
+
+// ----- State & DOM
+const overlay = document.getElementById('overlay');
+const tooltip = document.getElementById('tooltip');
+const tipText = document.getElementById('tipText');
+const modal = document.getElementById('modal');
+const modalTitle = document.getElementById('modalTitle');
+const modalEmoji = document.getElementById('modalEmoji');
+const modalDetails = document.getElementById('modalDetails');
+const modalList = document.getElementById('modalList');
+const modalLinks = document.getElementById('modalLinks');
+
+let hotspots = loadPositions() || DEFAULT_HOTSPOTS.map(h => ({...h}));
+let editMode = false;
+let drag = null;
+
+// ----- Render hotspots
+function render(){
+  overlay.innerHTML = '';
+  hotspots.forEach(h => {
+    const btn = document.createElement('button');
+    btn.className = 'hotspot';
+    btn.dataset.id = h.id;
+    btn.dataset.color = h.color;
+    btn.style.setProperty('--x', h.x + '%');
+    btn.style.setProperty('--y', h.y + '%');
+    btn.setAttribute('aria-label', h.label);
+    btn.innerHTML = `<span>${h.emoji}</span>`;
+    btn.addEventListener('mouseenter', (e)=>{
+      tipText.textContent = h.label;
+      positionTooltip(e);
+      tooltip.classList.add('show');
+    });
+    btn.addEventListener('mousemove', positionTooltip);
+    btn.addEventListener('mouseleave', ()=> tooltip.classList.remove('show'));
+    btn.addEventListener('click', ()=>{
+      // pop animation then open details
+      btn.classList.add('pop');
+      setTimeout(()=> openModal(h), 180);
+      btn.addEventListener('animationend', ()=> btn.classList.remove('pop'), {once:true});
+    });
+
+    // drag if edit mode
+    btn.addEventListener('pointerdown', (ev)=>{
+      if(!editMode) return;
+      ev.preventDefault();
+      drag = { id:h.id, start:{x:ev.clientX,y:ev.clientY} };
+      btn.setPointerCapture(ev.pointerId);
+    });
+    btn.addEventListener('pointermove', (ev)=>{
+      if(!drag || drag.id!==h.id) return;
+      const rect = overlay.getBoundingClientRect();
+      const nx = ((ev.clientX - rect.left) / rect.width) * 100;
+      const ny = ((ev.clientY - rect.top) / rect.height) * 100;
+      h.x = Math.max(2, Math.min(98, nx));
+      h.y = Math.max(2, Math.min(98, ny));
+      btn.style.setProperty('--x', h.x + '%');
+      btn.style.setProperty('--y', h.y + '%');
+    });
+    btn.addEventListener('pointerup', ()=> drag=null);
+
+    overlay.appendChild(btn);
+  });
+  updateEditingUI();
+}
+
+function positionTooltip(e){
+  const rect = overlay.getBoundingClientRect();
+  const x = ((e.clientX - rect.left) / rect.width) * 100;
+  const y = ((e.clientY - rect.top) / rect.height) * 100;
+  tooltip.style.left = x + '%';
+  tooltip.style.top = y + '%';
+}
+
+// ----- Modal
+function openModal(h){
+  modalTitle.textContent = h.label;
+  modalEmoji.textContent = h.emoji;
+  modalDetails.textContent = h.details || '';
+  modalList.innerHTML = '';
+  (h.list||[]).forEach(item=>{
+    const li = document.createElement('li');
+    li.textContent = item;
+    modalList.appendChild(li);
+  });
+  modalLinks.innerHTML = '';
+  (h.links||[]).forEach(l=>{
+    const a = document.createElement('a');
+    a.className='link'; a.href=l.href; a.target='_blank'; a.rel='noopener';
+    a.textContent = l.text;
+    modalLinks.appendChild(a);
+  });
+  modal.classList.add('show');
+}
+document.getElementById('closeModal').onclick = ()=> modal.classList.remove('show');
+document.getElementById('backdrop').onclick = ()=> modal.classList.remove('show');
+
+// ----- Edit / Save / Reset
+document.getElementById('toggleEdit').onclick = ()=> {
+  editMode = !editMode; updateEditingUI();
+};
+document.getElementById('saveBtn').onclick = ()=> {
+  localStorage.setItem('vb_hotspots_v1', JSON.stringify(hotspots.map(({x,y,id})=>({id,x,y}))));
+  flash('Positions saved.');
+};
+document.getElementById('resetBtn').onclick = ()=> {
+  localStorage.removeItem('vb_hotspots_v1');
+  hotspots = DEFAULT_HOTSPOTS.map(h=>({...h}));
+  render(); flash('Positions reset.');
+};
+document.addEventListener('keydown', (e)=>{
+  if(e.key.toLowerCase()==='e'){ editMode=!editMode; updateEditingUI(); }
+  if(e.key==='Escape'){ modal.classList.remove('show'); }
+});
+
+function updateEditingUI(){
+  document.getElementById('toggleEdit').classList.toggle('primary', editMode);
+  document.querySelectorAll('.hotspot').forEach(el=> el.classList.toggle('editing', editMode));
+}
+
+function loadPositions(){
+  const raw = localStorage.getItem('vb_hotspots_v1');
+  if(!raw) return null;
+  try{
+    const saved = JSON.parse(raw); // [{id,x,y}]
+    const dict = Object.fromEntries(saved.map(s=>[s.id,s]));
+    return DEFAULT_HOTSPOTS.map(h=> ({...h, ...(dict[h.id]||{})}));
+  }catch{ return null; }
+}
+
+function flash(msg){
+  const n = document.createElement('div');
+  n.textContent = msg;
+  n.style.cssText = `
+    position:fixed; left:50%; top:18px; transform:translateX(-50%);
+    background:#0f172a; color:#fff; padding:10px 14px; border-radius:10px;
+    box-shadow: var(--shadow); z-index:60; font-weight:700`;
+  document.body.appendChild(n);
+  setTimeout(()=> n.remove(), 1300);
+}
+
+// init
+render();
+</script>
+</body>
+</html>
